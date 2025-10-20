@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursed Path - Core Movement</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a2e; /* Dark theme background */
+            font-family: 'Inter', sans-serif;
+        }
+        #game-container {
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            overflow: hidden; /* Ensure rounded corners clip canvas */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container" class="p-4 bg-gray-800">
+        <!-- Phaser will inject the canvas here -->
+    </div>
+
+    <script>
+        
+        // =========================================================================
+        // 1. OOP Implementation: Player Class
+        // =========================================================================
+        
+        /**
+         * @class Player
+         * @augments Phaser.Physics.Arcade.Sprite (INHERITANCE)
+         * Encapsulates the player's data (speed, health) and movement behavior.
+         */
+        class Player extends Phaser.Physics.Arcade.Sprite {
+            
+            // --- ENCAPSULATION: Properties (Data) ---
+            moveSpeed = 200; 
+            cursors; 
+            wasd;
+            
+            // Define player health as a property
+            health = 3; 
+
+            /**
+             * @brief Constructor (Inheritance and Instantiation).
+             */
+            constructor(scene, x, y) {
+                // INHERITANCE: Call the parent's constructor using a temporary key to create the sprite.
+                super(scene, x, y, 'demonSlayer'); 
+                
+                scene.add.existing(this); 
+                scene.physics.add.existing(this); 
+                
+                // --- Configure Physics Body and Appearance ---
+                this.body.setAllowGravity(false); 
+                this.body.setCollideWorldBounds(true);
+                this.setOrigin(0.5, 0.5); 
+                this.setSize(30, 30); // Define the collision box size
+
+                // Set a simple color and size for the visual representation
+                this.setTint(0x8A2BE2); // Purple color
+                this.setScale(0.5); // Small size 
+                
+                // --- Setup Input (ENCAPSULATION of Dependencies) ---
+                this.cursors = scene.input.keyboard.createCursorKeys();
+                this.wasd = {
+                    up: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+                    down: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+                    left: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+                    right: scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
+                };
+            }
+
+            /**
+             * @brief Method to handle all movement input (ENCAPSULATION of Behavior).
+             */
+            handleInput() {
+                this.body.setVelocity(0);
+
+                let velX = 0;
+                let velY = 0;
+
+                // Check for input states
+                if (this.cursors.left.isDown || this.wasd.left.isDown) {
+                    velX = -this.moveSpeed;
+                } else if (this.cursors.right.isDown || this.wasd.right.isDown) {
+                    velX = this.moveSpeed;
+                }
+
+                if (this.cursors.up.isDown || this.wasd.up.isDown) {
+                    velY = -this.moveSpeed;
+                } else if (this.cursors.down.isDown || this.wasd.down.isDown) {
+                    velY = this.moveSpeed;
+                }
+
+                // Apply velocity
+                this.body.setVelocity(velX, velY);
+                
+                // Diagonal speed fix logic
+                if (velX !== 0 && velY !== 0) {
+                     // Normalize the vector to prevent faster diagonal movement
+                     const factor = this.moveSpeed / Math.sqrt(velX * velX + velY * velY);
+                     this.body.setVelocityX(velX * factor);
+                     this.body.setVelocityY(velY * factor);
+                }
+            }
+
+            /**
+             * @brief Update method (POLYMORPHISM).
+             */
+            update() {
+                this.handleInput();
+            }
+        } // End of Player Class
+
+
+        // =========================================================================
+        // 2. OOP Implementation: The GameScene Class
+        // =========================================================================
+        
+        /**
+         * @class CursedPathScene
+         * @augments Phaser.Scene (INHERITANCE)
+         * Encapsulates the game's state, environment, and update logic.
+         */
+        class CursedPathScene extends Phaser.Scene {
+            
+            // ENCAPSULATION: References to key game objects.
+            player; 
+            // Removed TilemapManager for simplicity!
+
+            constructor() {
+                super('CursedPathScene'); 
+            }
+
+            // POLYMORPHISM: Phaser engine calls these methods automatically.
+            preload() {
+                // We must load an image, even if it's not the final sprite, to properly initialize the Sprite object.
+                // We are using a generic placeholder URL for now.
+                this.load.image('demonSlayer', 'https://placehold.co/60x60/8A2BE2/FFFFFF?text=P');
+                this.add.text(10, 10, 'Loading Assets...', { fontSize: '16px', fill: '#ffffff' }).setDepth(10);
+            }
+
+            create() {
+                this.cameras.main.setBackgroundColor('#2c3e50'); // Dark slate blue
+                
+                // 1. Create the Player object (Instantiation)
+                // Start the player in the center of the screen (400, 300)
+                this.player = new Player(this, 400, 300); 
+
+                // Note: Collision with walls is removed for simplicity.
+                
+                // Display instructions
+                this.add.text(10, 10, 'Use WASD/Arrows to Move', { fontSize: '16px', fill: '#ffffff', backgroundColor: '#00000088' }).setDepth(10);
+                this.add.text(10, 35, 'Core Movement is Ready!', { fontSize: '16px', fill: '#00ff00', backgroundColor: '#00000088' }).setDepth(10);
+            }
+
+            update() {
+                // POLYMORPHISM: The scene's update calls the player's update, maintaining the loop chain.
+                this.player.update(); 
+            }
+        } // End of GameScene Class
+
+        // =========================================================================
+        // 3. Game Configuration and Setup
+        // =========================================================================
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 }, 
+                    // debug: true // Turned off debug to keep the screen clean
+                }
+            },
+            // Use the new CursedPathScene class
+            scene: CursedPathScene 
+        };
+
+        // Start the game!
+        const game = new Phaser.Game(config);
+
+    </script>
+</body>
+</html>
