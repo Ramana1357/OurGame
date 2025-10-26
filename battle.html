@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Battle Arena</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Phaser 3 -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <style>
+        /* Define the primary font for the page */
+        html { font-family: 'Inter', sans-serif; }
+        /* Style the game canvas container */
+        #game-container {
+            width: 100%;
+            max-width: 800px; /* Match the game width */
+            margin: auto;
+            border: 4px solid #1f2937; /* Dark border */
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
+        }
+        /* Ensure Phaser canvas scales nicely */
+        #game-container canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-dark': '#1f2937',
+                        'secondary-gray': '#4b5563',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 flex items-center justify-center">
+
+    <div class="w-full max-w-4xl text-center">
+        <!-- Title and description -->
+        <h1 class="text-4xl font-extrabold mb-2 text-yellow-300 tracking-wider">The Battle Arena</h1>
+        <p class="text-secondary-gray mb-6">A simple scene to initialize our combat system.</p>
+        
+        <!-- Phaser Game Container -->
+        <div id="game-container" class="mb-4">
+            <!-- The Phaser canvas will be injected here by the script -->
+        </div>
+
+        <!-- Instructions/Controls Area -->
+        <div class="bg-primary-dark p-4 rounded-lg shadow-xl inline-block">
+            <p class="text-sm text-gray-400">
+                Current State: **Awaiting Action**. Start implementing player input and turn-based logic in the `BattleScene` script below!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // --- PHASER 3 GAME CODE ---
+
+        /**
+         * The core battle scene for our 2D game.
+         */
+        class BattleScene extends Phaser.Scene {
+            constructor() {
+                super('BattleScene');
+                this.isTurnBased = true;
+                this.turn = 'player'; // Start with player turn
+            }
+
+            // Runs once to load assets
+            preload() {
+                // Since we are not loading images, we can preload simple assets like fonts or audio here later.
+                // For now, we will use text and graphics.
+                console.log("Assets preloaded.");
+            }
+
+            // Runs once after preload
+            create() {
+                // Set a dark blue background for the canvas
+                this.cameras.main.setBackgroundColor('#2c3e50');
+
+                // 1. Add player fighter (on the left)
+                this.playerFighter = this.add.text(150, 250, 'PLAYER HERO', {
+                    fontFamily: 'Arial Black',
+                    fontSize: '36px',
+                    color: '#00ff00', // Green for Player
+                    stroke: '#000000',
+                    strokeThickness: 8
+                }).setOrigin(0.5);
+
+                // 2. Add enemy fighter (on the right)
+                this.enemyFighter = this.add.text(650, 250, 'ENEMY GOBLIN', {
+                    fontFamily: 'Arial Black',
+                    fontSize: '36px',
+                    color: '#ff0000', // Red for Enemy
+                    stroke: '#000000',
+                    strokeThickness: 8
+                }).setOrigin(0.5);
+
+                // 3. Add Status/Info Text
+                this.statusText = this.add.text(400, 500, '--- PLAYER TURN! ---', {
+                    fontFamily: 'Inter',
+                    fontSize: '28px',
+                    color: '#ffffff',
+                    backgroundColor: '#1f2937',
+                    padding: { x: 15, y: 10 }
+                }).setOrigin(0.5).setDepth(1);
+
+                // Example of simple health bars (Graphics object)
+                this.createHealthBars();
+
+                // Listen for spacebar to simulate action (for testing turns)
+                this.input.keyboard.on('keydown-SPACE', this.handleTurn, this);
+            }
+
+            createHealthBars() {
+                // Player Health Bar (Green)
+                this.playerHealthBar = this.add.graphics();
+                this.drawHealthBar(this.playerHealthBar, 150 - 100, 320, 100, '#00ff00');
+
+                // Enemy Health Bar (Red)
+                this.enemyHealthBar = this.add.graphics();
+                this.drawHealthBar(this.enemyHealthBar, 650 - 100, 320, 100, '#ff0000');
+            }
+
+            drawHealthBar(bar, x, y, width, color) {
+                const height = 15;
+                const healthPercentage = 1; // 100% for start
+                bar.clear();
+                
+                // Background
+                bar.fillStyle(0x000000, 0.5);
+                bar.fillRect(x, y, width * 2, height);
+
+                // Health
+                bar.fillStyle(Phaser.Display.Color.HexStringToColor(color).color, 1);
+                bar.fillRect(x + 2, y + 2, (width * 2 - 4) * healthPercentage, height - 4);
+            }
+
+            handleTurn() {
+                if (this.turn === 'player') {
+                    this.turn = 'enemy';
+                    this.statusText.setText('--- ENEMY TURN! ---');
+                    this.statusText.setColor('#ff8800');
+                    console.log('Player took action. Now Enemy Turn.');
+
+                    // Simple enemy action simulation after a short delay
+                    this.time.delayedCall(1500, () => {
+                        this.turn = 'player';
+                        this.statusText.setText('--- PLAYER TURN! ---');
+                        this.statusText.setColor('#ffffff');
+                        console.log('Enemy took action. Now Player Turn.');
+                    }, [], this);
+
+                } else {
+                    // Do nothing if it's currently the enemy's turn
+                }
+            }
+
+            // Runs every frame
+            update(time, delta) {
+                // Game logic that needs to run continuously goes here.
+            }
+        }
+
+        // Configuration object for the game
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            // Link the canvas to the HTML div with id="game-container"
+            parent: 'game-container',
+            scene: [BattleScene],
+            scale: {
+                mode: Phaser.Scale.FIT, // Use FIT to ensure it scales responsively
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            }
+        };
+
+        // Create the game instance when the window loads
+        window.onload = function () {
+            const game = new Phaser.Game(config);
+        };
+    </script>
+</body>
+</html>
