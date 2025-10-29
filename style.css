@@ -1,0 +1,47 @@
+/* A single stylesheet for both index.html and battle.html */
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #1a1a1a;
+    font-family: 'Inter', 'Helvetica', 'Arial', sans-serif;
+}
+
+#game-container {
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    overflow: hidden; /* Ensures canvas respects the border radius */
+}
+
+canvas {
+    display: block;
+}
+
+/* This container will hold our HTML battle buttons */
+#ui-container {
+    position: absolute;
+    bottom: 20px;
+    width: 800px; /* Match game width */
+    text-align: center;
+}
+
+.battle-button {
+    font-family: 'Inter', 'Helvetica', 'Arial', sans-serif;
+    font-size: 16px;
+    padding: 10px 20px;
+    margin: 0 10px;
+    border: 2px solid #fff;
+    background-color: #333;
+    color: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.battle-button:hover {
+    background-color: #555;
+}
+
