@@ -1,23 +1,22 @@
 /*
  * js/battle.js
  * This file controls the turn-based battle scene (battle.html).
- * It manages player/enemy health, attacks, and the Gemini API call.
+ * It reads state from localStorage and writes the result back.
  */
 
 //==================================================================
-//  GEMINI API FUNCTIONS
+//  GEMINI API CALL (Helper Function)
 //==================================================================
-
 /**
- * Calls the Gemini API to generate a taunt from the demon.
- * @param {Phaser.Scene} scene - The battle scene, to add text.
+ * Calls the Gemini API to get a taunt from the villain.
  */
-async function getDemonTaunt(scene) {
-    const apiKey = ""; // Leave blank, will be provided by the runtime
+async function getVillainTaunt() {
+    const systemPrompt = "You are Muzan Kibutsuji from Demon Slayer. A foolish demon slayer has just been defeated by one of your demons. Write a very short, one-sentence taunt to mock their weakness and failure. Be cruel and dismissive.";
+    const userQuery = "Mock me for losing.";
+    
+    // NOTE: The API key is an empty string. Canvas will handle authentication.
+    const apiKey = ""; 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-
-    const systemPrompt = "You are Muzan Kibutsuji, the main villain. The player has just been defeated by one of your demons. Write a very short, mocking, and cruel taunt (one sentence, max 15 words) to display on their 'Game Over' screen.";
-    const userQuery = "The player has died. Mock them.";
 
     const payload = {
         contents: [{ parts: [{ text: userQuery }] }],
@@ -26,156 +25,175 @@ async function getDemonTaunt(scene) {
         },
     };
 
-    // Add loading text
-    const loadingText = scene.add.text(400, 300, 'The demon is thinking...', {
-        fontSize: '20px', fill: '#FF8888', align: 'center', wordWrap: { width: 700 }
-    }).setOrigin(0.5);
-
     try {
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        let response;
+        let delay = 1000;
+        for (let i = 0; i < 5; i++) {
+            response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
+            if (response.ok) {
+                break;
+            } else if (response.status === 429 || response.status >= 500) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2;
+            } else {
+                throw new Error(`API Error: ${response.statusText}`);
+            }
+        }
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`API failed after retries: ${response.statusText}`);
         }
 
         const result = await response.json();
         const candidate = result.candidates?.[0];
-
+        
         if (candidate && candidate.content?.parts?.[0]?.text) {
-            const taunt = candidate.content.parts[0].text;
-            // Clean up the taunt (remove quotes)
-            return taunt.replace(/\"/g, '');
+            return candidate.content.parts[0].text;
         } else {
-            return "You are weak and pathetic."; // Fallback taunt
+            return "You are a disgrace. (API Error)";
         }
-
     } catch (error) {
-        console.error("Error calling Gemini API:", error);
-        return "You aren't even worth mocking."; // Fallback taunt on error
-    } finally {
-        loadingText.destroy(); // Remove loading text
+        console.error("Gemini API call failed:", error);
+        return "You are not even worth my time."; // Fallback taunt
     }
 }
 
 //==================================================================
-//  BATTLE SCENE (Turn-Based)
+//  BATTLE SCENE (OOP)
 //==================================================================
 class BattleScene extends Phaser.Scene {
     constructor() {
         super('BattleScene');
         
-        // OOP: Encapsulate state
-        // 1. *** LOAD PLAYER HEALTH FROM LOCAL STORAGE ***
-        // Get the health saved by main.js, or default to 100
+        // 1. LOAD PLAYER HEALTH FROM LOCAL STORAGE
         this.playerHealth = parseInt(localStorage.getItem('playerHealthBeforeBattle')) || 100;
         
-        this.enemyHealth = 100;
+        this.enemyHealth = 100; // All low-level demons have 100 HP
         this.isPlayerTurn = true;
         this.isGameOver = false;
+
+        // UI Element references
+        this.playerSprite = null;
+        this.enemySprite = null;
+        this.playerHealthBar = null;
+        this.enemyHealthBar = null;
+        this.statusText = null;
+        this.attackButton = null;
+        this.fleeButton = null;
     }
 
     preload() {
-        // In a real project, load assets from 'assets/'
-        // this.load.image('player_battle', 'assets/images/player_battle_pose.png');
-        // this.load.image('enemy_battle', 'assets/images/goblin.png');
+        this.load.image('player_idle', 'https://placehold.co/150x200/8A2BE2/FFFFFF?text=Hero');
+        this.load.image('enemy_idle', 'https://placehold.co/150x200/ff0000/FFFFFF?text=Demon');
     }
 
     create() {
-        // Create the background color
-        this.cameras.main.setBackgroundColor('#3d2f2f'); // Dark, blood-red background
+        this.cameras.main.setBackgroundColor('#2c3e50');
 
-        // --- Create Actors ---
-        // We use placeholders since assets aren't loaded
-        this.playerSprite = this.add.rectangle(200, 300, 150, 200, 0x00FF00).setOrigin(0.5);
-        this.add.text(200, 300, 'Player', { fill: '#fff', fontSize: '24px' }).setOrigin(0.5);
-        
-        this.enemySprite = this.add.rectangle(600, 300, 150, 200, 0xFF0000).setOrigin(0.5);
-        this.add.text(600, 300, 'Demon', { fill: '#fff', fontSize: '24px' }).setOrigin(0.5);
+        // --- Create Sprites (placeholders) ---
+        this.playerSprite = this.add.sprite(200, 300, 'player_idle');
+        this.enemySprite = this.add.sprite(600, 300, 'enemy_idle');
 
-        // --- Create Health Displays ---
-        this.playerHealthText = this.add.text(200, 420, `HP: ${this.playerHealth}`, { fontSize: '20px', fill: '#00FF00' }).setOrigin(0.5);
-        this.enemyHealthText = this.add.text(600, 420, `HP: ${this.enemyHealth}`, { fontSize: '20px', fill: '#FF0000' }).setOrigin(0.5);
+        // --- Create Health Bars and UI ---
+        this.playerHealthBar = this.add.graphics();
+        this.enemyHealthBar = this.add.graphics();
+        this.updateHealthBars();
 
-        // --- Create UI ---
-        this.statusText = this.add.text(400, 50, 'Your turn!', { fontSize: '28px', fill: '#fff' }).setOrigin(0.5);
-        this.createBattleButtons();
+        this.statusText = this.add.text(400, 50, 'Player Turn!', {
+            fontSize: '32px', fill: '#ffffff', fontFamily: 'Arial',
+            backgroundColor: '#00000080', padding: { x: 10, y: 5 }
+        }).setOrigin(0.5);
+
+        this.createHTMLButtons();
     }
 
-    createBattleButtons() {
-        // Get the HTML UI container from battle.html
+    createHTMLButtons() {
+        // --- Create the HTML buttons for turn-based combat ---
         const uiContainer = document.getElementById('ui-container');
+        if (!uiContainer) return;
 
-        // 1. Water Breathing Button
-        const attackButton = document.createElement('button');
-        attackButton.className = 'battle-button';
-        attackButton.innerText = 'Water Breathing (Attack)';
-        attackButton.onclick = () => this.playerAttack('water');
+        // Button styles
+        const buttonStyle = "text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-200 ease-in-out m-2";
+        const attackStyle = "bg-red-600 hover:bg-red-700";
+        const fleeStyle = "bg-gray-500 hover:bg-gray-600";
+
+        // Attack Button
+        this.attackButton = document.createElement('button');
+        this.attackButton.innerText = 'Attack (Water Breathing)';
+        this.attackButton.className = `${buttonStyle} ${attackStyle}`;
+        this.attackButton.onclick = () => this.playerAttack();
         
-        // 2. Thunder Breathing Button (Placeholder)
-        const skillButton = document.createElement('button');
-        skillButton.className = 'battle-button';
-        skillButton.innerText = 'Thunder Breathing (Skill)';
-        skillButton.onclick = () => this.playerAttack('thunder');
+        // Flee Button
+        this.fleeButton = document.createElement('button');
+        this.fleeButton.innerText = 'Flee';
+        this.fleeButton.className = `${buttonStyle} ${fleeStyle}`;
+        this.fleeButton.onclick = () => this.fleeBattle();
 
-        // 3. Flee Button
-        const fleeButton = document.createElement('button');
-        fleeButton.className = 'battle-button';
-        fleeButton.innerText = 'Flee';
-        fleeButton.onclick = () => this.fleeBattle();
-
-        uiContainer.appendChild(attackButton);
-        uiContainer.appendChild(skillButton);
-        uiContainer.appendChild(fleeButton);
+        uiContainer.appendChild(this.attackButton);
+        uiContainer.appendChild(this.fleeButton);
+    }
+    
+    toggleButtons(isEnabled) {
+        if (this.attackButton) this.attackButton.disabled = !isEnabled;
+        if (this.fleeButton) this.fleeButton.disabled = !isEnabled;
+        
+        const opacity = isEnabled ? '1.0' : '0.5';
+        if (this.attackButton) this.attackButton.style.opacity = opacity;
+        if (this.fleeButton) this.fleeButton.style.opacity = opacity;
     }
 
-    playerAttack(style) {
+    // --- Battle Logic ---
+
+    playerAttack() {
         if (!this.isPlayerTurn || this.isGameOver) return;
 
-        let damage = 0;
-        let attackText = '';
-
-        // This is the blueprint for different styles
-        if (style === 'water') {
-            damage = Phaser.Math.Between(15, 25);
-            attackText = `You used Water Breathing! Dealt ${damage} damage.`;
-        } else if (style === 'thunder') {
-            damage = Phaser.Math.Between(5, 40); // More random
-            attackText = `You used Thunder Breathing! Dealt ${damage} damage.`;
-        }
-
+        // Player attacks
+        const damage = 25; // Player deals 25 damage
         this.enemyHealth -= damage;
-        this.updateHealthText();
-        this.statusText.setText(attackText);
-
+        this.cameras.main.shake(100, 0.01); // Screen shake
+        this.enemySprite.setTint(0xffffff); // Flash white
+        this.time.delayedCall(100, () => this.enemySprite.clearTint());
+        
+        this.updateHealthBars();
+        
         if (this.enemyHealth <= 0) {
-            this.endBattle(true); // Player wins
+            this.enemyHealth = 0;
+            this.endBattle(true); // Player won
         } else {
+            // It's now the enemy's turn
             this.startEnemyTurn();
         }
     }
 
     startEnemyTurn() {
         this.isPlayerTurn = false;
-        this.toggleButtons(false); // Disable buttons
-        this.statusText.setText('Demon is attacking...');
-
-        // Wait 1.5 seconds, then enemy attacks
+        this.statusText.setText('Demon is thinking...');
+        this.toggleButtons(false);
+        
+        // Wait 1.5 seconds, then the enemy attacks
         this.time.delayedCall(1500, () => {
-            const damage = Phaser.Math.Between(10, 20);
+            if (this.isGameOver) return;
+            
+            const damage = 15; // Enemy deals 15 damage
             this.playerHealth -= damage;
-            this.updateHealthText();
-            this.statusText.setText(`Demon attacked! You took ${damage} damage.`);
-
+            this.cameras.main.shake(100, 0.01);
+            this.playerSprite.setTint(0xffffff);
+            this.time.delayedCall(100, () => this.playerSprite.clearTint());
+            
+            this.updateHealthBars();
+            
             if (this.playerHealth <= 0) {
-                this.endBattle(false); // Player loses
+                this.playerHealth = 0;
+                this.endBattle(false); // Player lost
             } else {
+                // It's the player's turn again
                 this.isPlayerTurn = true;
-                this.toggleButtons(true); // Re-enable buttons
-                this.statusText.setText('Your turn!');
+                this.statusText.setText('Player Turn!');
+                this.toggleButtons(true);
             }
         });
     }
@@ -185,76 +203,91 @@ class BattleScene extends Phaser.Scene {
             // If game is over, the button already redirects
             window.location.href = 'index.html';
         } else {
-            // 2. *** SET BATTLE RESULT TO 'FLED' ***
+            // *** SET BATTLE RESULT TO 'FLED' AND REMOVE ENEMY ID ***
             localStorage.setItem('battleResult', 'fled');
+            localStorage.removeItem('enemyToFight'); // Crucial: don't count this enemy as defeated
             
-            // Flee back to the map
             this.statusText.setText('You fled!');
-            this.scene.pause();
-            window.location.href = 'index.html';
+            this.toggleButtons(false);
+            
+            // Redirect after 1 second
+            this.time.delayedCall(1000, () => {
+                window.location.href = 'index.html';
+            });
         }
-    }
-
-    updateHealthText() {
-        this.playerHealthText.setText(`HP: ${Math.max(0, this.playerHealth)}`);
-        this.enemyHealthText.setText(`HP: ${Math.max(0, this.enemyHealth)}`);
-    }
-
-    toggleButtons(isEnabled) {
-        const buttons = document.querySelectorAll('.battle-button');
-        buttons.forEach(button => {
-            button.disabled = !isEnabled;
-            button.style.opacity = isEnabled ? '1' : '0.5';
-        });
     }
 
     async endBattle(playerWon) {
         this.isGameOver = true;
-        this.toggleButtons(false); // Disable all buttons
-        
-        // Find and change Flee button to "Return to Map"
-        const fleeButton = Array.from(document.querySelectorAll('.battle-button')).find(btn => btn.innerText === 'Flee');
-        if (fleeButton) {
-            fleeButton.innerText = 'Return to Map';
-            fleeButton.disabled = false;
-            fleeButton.style.opacity = '1';
+        this.toggleButtons(false);
+
+        // --- Configure the "Flee" button to be "Return to Map" ---
+        if (this.fleeButton) {
+            this.fleeButton.innerText = 'Return to Map';
+            this.fleeButton.disabled = false;
+            this.fleeButton.style.opacity = '1';
         }
 
         if (playerWon) {
-            // 3. *** SET BATTLE RESULT TO 'WIN' ***
+            // *** SET BATTLE RESULT TO 'WIN' ***
             localStorage.setItem('battleResult', 'win');
             
             this.statusText.setText('You defeated the demon!');
             this.enemySprite.setAlpha(0.3); // Show enemy is defeated
         } else {
-            // 4. *** SET BATTLE RESULT TO 'LOSE' ***
+            // *** SET BATTLE RESULT TO 'LOSE' AND REMOVE ENEMY ID ***
             localStorage.setItem('battleResult', 'lose');
+            localStorage.removeItem('enemyToFight'); // Crucial: don't count this enemy as defeated
             
             this.statusText.setText('You have been defeated... GAME OVER');
-            this.playerSprite.setAlpha(0.3); // Show player is defeated
+            this.playerSprite.setAlpha(0.3);
             
-            // *** GEMINI API CALL ***
-            const taunt = await getDemonTaunt(this);
-            const tauntText = this.add.text(400, 350, taunt, {
-                fontSize: '24px', fill: '#FF4444', fontStyle: 'italic', align: 'center', wordWrap: { width: 700 }
-            }).setOrigin(0.5);
+            // --- Call Gemini API for a taunt ---
+            this.statusText.setText('Demon is mocking you...');
+            const taunt = await getVillainTaunt();
+            this.statusText.setText(`"${taunt}"`);
         }
     }
-}
+
+    updateHealthBars() {
+        // Calculate percentages
+        const playerPercent = Math.max(0, this.playerHealth / 100);
+        const enemyPercent = Math.max(0, this.enemyHealth / 100);
+
+        // Bar dimensions
+        const barWidth = 200;
+        const barHeight = 30;
+
+        // Update Player Health Bar
+        this.playerHealthBar.clear();
+        this.playerHealthBar.fillStyle(0x333333); // Background
+        this.playerHealthBar.fillRect(100, 500, barWidth, barHeight);
+        this.playerHealthBar.fillStyle(0x00ff00); // Health
+        this.playerHealthBar.fillRect(100, 500, barWidth * playerPercent, barHeight);
+        
+        // Update Enemy Health Bar
+        this.enemyHealthBar.clear();
+        this.enemyHealthBar.fillStyle(0x333333); // Background
+        this.enemyHealthBar.fillRect(500, 500, barWidth, barHeight);
+        this.enemyHealthBar.fillStyle(0xff0000); // Health
+        this.enemyHealthBar.fillRect(500, 500, barWidth * enemyPercent, barHeight);
+    }
+} // End of BattleScene Class
 
 //==================================================================
-//  PHASER GAME CONFIGURATION (Battle)
+//  GAME CONFIGURATION
 //==================================================================
 const config = {
     type: Phaser.AUTO,
     width: 800,
     height: 600,
-    parent: 'game-container', // Matches the div ID in battle.html
+    parent: 'game-container',
     scene: [BattleScene],
-    // No physics needed for this simple turn-based scene
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+    }
 };
 
-// Start the game
+// Start the game instance
 const game = new Phaser.Game(config);
-
-
