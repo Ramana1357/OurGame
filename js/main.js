@@ -91,7 +91,6 @@ class Player extends Phaser.GameObjects.Container {
 //==================================================================
 class Enemy extends Phaser.GameObjects.Container {
 
-    // MODIFICATION: The constructor now accepts a persistent ID
     constructor(scene, x, y, id) {
         super(scene, x, y);
         scene.add.existing(this);
@@ -102,7 +101,6 @@ class Enemy extends Phaser.GameObjects.Container {
         this.body.setCollideWorldBounds(true);
         this.speed = ENEMY_SPEED;
         
-        // MODIFICATION: Use the persistent ID from the map
         this.id = id; 
         
         // --- Draw visual graphic (Red rectangle) ---
@@ -178,7 +176,6 @@ class CursedPathScene extends Phaser.Scene {
     }
 
     preload() {
-        // Placeholder image for the player
         this.load.image('demonSlayer', 'https://placehold.co/40x40/8A2BE2/FFFFFF?text=P');
     }
 
@@ -195,25 +192,43 @@ class CursedPathScene extends Phaser.Scene {
         const battleResult = localStorage.getItem('battleResult');
         let defeatedEnemies = JSON.parse(localStorage.getItem('defeatedEnemies')) || [];
         let playerHealth = 100;
+        
+        // NEW: Load position from localStorage if we are returning from battle
+        let startX = this.tilemapManager.playerStartPosition.x;
+        let startY = this.tilemapManager.playerStartPosition.y;
+        
+        const savedPosX = localStorage.getItem('playerPosX');
+        const savedPosY = localStorage.getItem('playerPosY');
 
-        if (battleResult === 'win') {
-            const defeatedId = localStorage.getItem('enemyToFight');
-            if (defeatedId && !defeatedEnemies.includes(defeatedId)) {
-                defeatedEnemies.push(defeatedId);
-                localStorage.setItem('defeatedEnemies', JSON.stringify(defeatedEnemies));
+        if (battleResult) {
+            // We are returning from a battle.
+            
+            if (battleResult === 'win') {
+                const defeatedId = localStorage.getItem('enemyToFight');
+                if (defeatedId && !defeatedEnemies.includes(defeatedId)) {
+                    defeatedEnemies.push(defeatedId);
+                    localStorage.setItem('defeatedEnemies', JSON.stringify(defeatedEnemies));
+                }
+                playerHealth = 100; // Restore player health to full after win
+            } else if (battleResult === 'fled' || battleResult === 'lose') {
+                playerHealth = parseInt(localStorage.getItem('playerHealthBeforeBattle')) || 100;
             }
-            playerHealth = 100; // Restore player health to full after win
-        } else if (battleResult === 'fled' || battleResult === 'lose') {
-            playerHealth = parseInt(localStorage.getItem('playerHealthBeforeBattle')) || 100;
+            
+            // Set the start position to the saved position before the battle
+            if (savedPosX && savedPosY) {
+                startX = parseFloat(savedPosX);
+                startY = parseFloat(savedPosY);
+            }
         }
 
-        // Clear the flags so this only runs once
+        // Clear the battle specific flags
         localStorage.removeItem('battleResult');
         localStorage.removeItem('enemyToFight');
+        localStorage.removeItem('playerPosX'); // Clear position after use
+        localStorage.removeItem('playerPosY'); // Clear position after use
         
         // Create Player
-        const playerStart = this.tilemapManager.playerStartPosition;
-        this.player = new Player(this, playerStart.x, playerStart.y);
+        this.player = new Player(this, startX, startY); // Use determined start position
         this.player.health = playerHealth;
         
         // --- Camera Setup ---
@@ -236,7 +251,7 @@ class CursedPathScene extends Phaser.Scene {
             }
         });
 
-        // --- Create Exit Door (Visual Polish) ---
+        // --- Create Exit Door ---
         if (this.tilemapManager.exitPosition) {
             const exitPos = this.tilemapManager.exitPosition;
             
@@ -253,10 +268,10 @@ class CursedPathScene extends Phaser.Scene {
             this.physics.world.enable(this.exitDoor);
             this.exitDoor.body.setAllowGravity(false);
             this.exitDoor.body.setImmovable(true);
-            this.exitDoor.setDepth(1); // Ensure it draws over path
+            this.exitDoor.setDepth(1); 
 
             // Final Level Condition Check
-            if (defeatedEnemies.length < enemySpawns.length) {
+            if (this.enemies.getLength() > 0) { // Check if any enemies were added (are alive)
                 // Not all enemies are defeated: Lock the door (make it solid)
                 this.exitDoor.fillColor = 0xFF0000; // Red (Locked)
                 this.physics.add.collider(this.player, this.exitDoor);
@@ -283,6 +298,11 @@ class CursedPathScene extends Phaser.Scene {
         player.body.stop();
         enemy.body.stop();
         this.scene.pause();
+        
+        // *** NEW: Save current player position before leaving ***
+        localStorage.setItem('playerPosX', player.x);
+        localStorage.setItem('playerPosY', player.y);
+        
         localStorage.setItem('enemyToFight', enemy.id);
         localStorage.setItem('playerHealthBeforeBattle', player.health);
         window.location.href = 'battle.html';
@@ -290,8 +310,8 @@ class CursedPathScene extends Phaser.Scene {
 
     completeLevel() {
         // This runs when the player touches the unlocked exit door
-        localStorage.clear(); // Clear all game state for the next level/reset
         alert("Level Complete! You can now proceed to the next Upper Moon.");
+        localStorage.clear(); // Clear all game state for the next level/reset
         window.location.href = 'index.html'; // Restart for demo purposes
     }
 
@@ -299,17 +319,13 @@ class CursedPathScene extends Phaser.Scene {
         if (this.player) {
             this.player.update();
             
-            // Update the HP text display
             this.hpText.setText(`HP: ${this.player.health}`);
             
             // Check if the exit needs to be unlocked during gameplay
             if (this.exitDoor && this.exitDoor.fillColor === 0xFF0000) {
                  if (this.enemies.getLength() === 0) {
-                    // Unlock the door since all enemies are destroyed
                     this.exitDoor.fillColor = 0x00FF00;
                     
-                    // Remove the solid collision and add the overlap
-                    // This is complex, so we manually check for the specific collider to remove it
                     const existingCollider = this.physics.world.colliders.getActive().find(c => {
                         return (c.object1 === this.player && c.object2 === this.exitDoor) || 
                                (c.object2 === this.player && c.object1 === this.exitDoor);
@@ -323,7 +339,6 @@ class CursedPathScene extends Phaser.Scene {
             }
         }
         
-        // Update all enemies in the group
         this.enemies.getChildren().forEach(enemy => {
             enemy.update(this.player);
         });
